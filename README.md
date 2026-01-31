@@ -9,11 +9,13 @@
 - **即時監聽**：秒級同步轉發，不漏掉任何重要資訊。
 - **多媒體支援**：除了純文字，還能自動下載並轉發圖片、影片及文件。
 - **頻道過濾**：可設定特定的 `SOURCE_CHAT_ID`，僅轉發你需要的內容。
+- **Topic 過濾**：支援 Telegram Forum 模式，可指定 `TARGET_TOPIC_ID`，只同步特定主題的訊息。
 - **自動清理**：媒體檔案轉發後會自動從本地刪除，不佔用硬碟空間。
 - **Webhook 整合**：無需複雜的 Discord Bot 權限，只要有 Webhook 連結即可運作。
-- **智能檔案過濾**：新增 `MAX_FILE_SIZE` 檢查，自動跳過過大的媒體檔案，避免因 Discord 限制（目前為 10MB）導致的發送失敗。
+- **身分識別**：會根據個人用戶（First/Last Name）或頻道身分（Title）自動切換顯示名稱。
+- **大型檔案過濾**：新增 `MAX_FILE_SIZE` 檢查，自動跳過過大的媒體檔案，避免因 Discord 限制（目前為 25MB）導致的發送失敗。
 - **訊息溯源連結**：自動生成 Telegram 來源連結，點擊即可跳轉回原頻道查看完整內容。
-- **增強版狀態監控**：終端機（CMD）現在會詳細顯示下載進度與跳過原因，方便維護。
+- **狀態監控**：終端機（CMD）現在會詳細顯示下載進度與跳過原因，方便維護。
 
 ## 使用說明
 
@@ -51,7 +53,8 @@
     API_HASH = 'your_hash'           # 填入你的 API Hash
     BOT_TOKEN = 'your_bot_token'     # 填入你的 Bot Token
     DISCORD_WEBHOOK_URL = '...'      # 填入 Discord Webhook 網址
-    SOURCE_CHAT_ID = 0               # 填入來源 ID (初次執行可維持 0 來查 ID)
+    SOURCE_CHAT_ID = 0               # 填入來源頻道 ID
+    OURCE_TOPIC_ID = 0               # 填入來源 topic ID
     MAX_FILE_SIZE = 25 * 1024 * 1024 # 檔案大小限制 (預設 25MB)
     ```
 

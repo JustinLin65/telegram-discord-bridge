@@ -3,6 +3,16 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [3.0.0]
+
+### Added
+- **Topic 過濾功能**：新增 `TARGET_TOPIC_ID` 參數，支援 Telegram 論壇模式的精確同步。
+- **Forum 補救邏輯**：針對 Forum 模式下首個主題（General）可能無法獲取 ID 的限制，加入自動偵測補償機制。
+- **發訊者識別**：重寫了 `display_name` 邏輯，現在能更準確地抓取「名+姓」或「頻道標題」作為 Discord 的顯示名稱。
+
+### Changed
+- **Discord 顯示優化**：Discord 訊息的 Webhook Username 現在會顯示為 TG 實際發訊者的名稱，而非統一的機器人名稱，使同步感更真實。
+
 ## [2.0.0]
 
 ### Added
