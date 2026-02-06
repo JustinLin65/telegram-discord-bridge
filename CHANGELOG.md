@@ -3,7 +3,17 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
-## [3.0.0]
+## [3.1]
+
+### Added
+- **自動化頭像生成系統**：整合 `ui-avatars.com` 服務。現在 Webhook 會根據 `display_name` 自動生成並顯示首字母頭像，且背景顏色隨機，增加視覺辨識度。
+- **URL 編碼處理**：引入 `urllib.parse` 處理中文名稱的 URL 編碼，確保非英文名稱也能正確生成頭像連結。
+
+### Changed
+- **Session 名稱優化**：更改內部 Session 名稱為 `bot_session_auto_avatar`，確保升級後能乾淨啟動並重新儲存狀態。
+- **程式碼結構優化**：在 `send_to_discord` 函數中新增 `avatar_url` 參數支援。
+
+## [3.0]
 
 ### Added
 - **Topic 過濾功能**：新增 `TARGET_TOPIC_ID` 參數，支援 Telegram 論壇模式的精確同步。
@@ -13,7 +23,7 @@
 ### Changed
 - **Discord 顯示優化**：Discord 訊息的 Webhook Username 現在會顯示為 TG 實際發訊者的名稱，而非統一的機器人名稱，使同步感更真實。
 
-## [2.0.0]
+## [2.0]
 
 ### Added
 - **檔案大小限制機制**：新增 `MAX_FILE_SIZE` 設定，避免發送超過 Discord 限制（25MB）的大檔案造成程式崩潰。
@@ -26,7 +36,7 @@
 
 ---
 
-## [1.0.0]
+## [1.0]
 
 ### Added
 - 專案初始版本發佈。
