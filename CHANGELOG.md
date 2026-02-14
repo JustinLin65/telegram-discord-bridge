@@ -3,7 +3,16 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
-## [3.1]
+## [2.0.0]
+
+### Added
+- **雙軌轉發架構**：同步支援 `DC_FORWARD_RULES` (TG 轉 Discord) 與 `TG_FORWARD_RULES` (TG 轉 TG) 兩套獨立規則。
+- **整合式非同步處理**：引入 `process_discord_forward` 函式，將發訊者識別、頭像生成、媒體下載與 Webhook 發送邏輯封裝，提升執行效率。
+
+### Changed
+- **Session 名稱整合**：更新內部 Session 名稱為 `bot_session_integrated`，以對應全新的整合邏輯。
+
+## [1.3.0]
 
 ### Added
 - **自動化頭像生成系統**：整合 `ui-avatars.com` 服務。現在 Webhook 會根據 `display_name` 自動生成並顯示首字母頭像，且背景顏色隨機，增加視覺辨識度。
@@ -13,7 +22,7 @@
 - **Session 名稱優化**：更改內部 Session 名稱為 `bot_session_auto_avatar`，確保升級後能乾淨啟動並重新儲存狀態。
 - **程式碼結構優化**：在 `send_to_discord` 函數中新增 `avatar_url` 參數支援。
 
-## [3.0]
+## [1.2.0]
 
 ### Added
 - **Topic 過濾功能**：新增 `TARGET_TOPIC_ID` 參數，支援 Telegram 論壇模式的精確同步。
@@ -23,7 +32,7 @@
 ### Changed
 - **Discord 顯示優化**：Discord 訊息的 Webhook Username 現在會顯示為 TG 實際發訊者的名稱，而非統一的機器人名稱，使同步感更真實。
 
-## [2.0]
+## [1.1.0]
 
 ### Added
 - **檔案大小限制機制**：新增 `MAX_FILE_SIZE` 設定，避免發送超過 Discord 限制（25MB）的大檔案造成程式崩潰。
@@ -36,7 +45,7 @@
 
 ---
 
-## [1.0]
+## [1.0.0]
 
 ### Added
 - 專案初始版本發佈。

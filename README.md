@@ -13,8 +13,8 @@
 - **自動清理**：媒體檔案轉發後會自動從本地刪除，不佔用硬碟空間。
 - **Webhook 整合**：無需複雜的 Discord Bot 權限，只要有 Webhook 連結即可運作。
 - **身分識別**：會顯示發訊者的名稱，並整合 `ui-avatars.com` API 根據名稱自動生成對應的字母頭像。
-- **大型檔案過濾**：新增 `MAX_FILE_SIZE` 檢查，自動跳過過大的媒體檔案，避免因 Discord 限制（目前為 25MB）導致的發送失敗（若失敗會附上 Telegram 來源連結）。
-- **狀態監控**：終端機（CMD）現在會詳細顯示下載進度與跳過原因，方便維護。
+- **大型檔案過濾**： `MAX_FILE_SIZE` 檢查，自動跳過過大的媒體檔案，避免因 Discord 限制（目前為 25MB）導致的發送失敗（若失敗會附上 Telegram 來源連結）。
+- **狀態監控**：終端機（CMD）會詳細顯示下載進度與跳過原因，方便維護。
 
 ## 使用說明
 
@@ -40,6 +40,10 @@
 
     2. 注意：請將該機器人加入你想監聽的頻道並設為管理員。
 
+- Telegram 頻道ID
+
+    1. 在 Telegram 私訊 @userinfobot ，獲取頻道ID
+
 - Discord Webhook:
 
     1. 在 Discord 頻道設定 -> 整合 -> 建立 Webhook 並複製網址。
@@ -51,10 +55,33 @@
     API_ID = 1234567                 # 填入你的 API ID
     API_HASH = 'your_hash'           # 填入你的 API Hash
     BOT_TOKEN = 'your_bot_token'     # 填入你的 Bot Token
-    DISCORD_WEBHOOK_URL = '...'      # 填入 Discord Webhook 網址
-    SOURCE_CHAT_ID = 0               # 填入來源頻道 ID
-    OURCE_TOPIC_ID = 0               # 填入來源 topic ID
-    MAX_FILE_SIZE = 25 * 1024 * 1024 # 檔案大小限制 (預設 25MB)
+    ```
+    轉發規則：
+    ```
+    # -------------------------------------------------------
+    # 【規則清單 A】: Telegram -> Discord
+    # 設定哪些訊息要轉傳到 Discord Webhook
+    # -------------------------------------------------------
+        # --- 1: YOUR_DC_FORWARD_RULES_1 ---
+        {
+            "source_chat_id": 0,     # 來源頻道 ID
+            "topic_id": 0,           # 來源 Topic ID (None 代表不分 Topic)
+            "webhook_url": "..."     # 填入 Discord Webhook 網址
+        },
+
+    # -------------------------------------------------------
+    # 【規則清單 B】: Telegram -> Telegram
+    # 設定哪些訊息要轉傳到另一個 TG 頻道/Topic
+    # -------------------------------------------------------
+        # --- 1. YOUR_TG_FORWARD_RULES ---
+        {
+            "source_chat_id": 0,     # 來源頻道
+            "topic_id": 0,           # 來源 Topic ID (None 代表不分 Topic)
+            "dest_chat_id": 0,       # 目標頻道
+            "dest_topic_id": 0       # 目標 Topic ID (普通群組填 None)
+        },
+    
+    MAX_FILE_SIZE = 25 * 1024 * 1024 # 檔案大小限制 (預設 25MB)(根據需求自行修改)
     ```
 
 4. **啟動程式**
@@ -64,6 +91,7 @@
 ## ⚠️ 注意事項
 
 檔案限制：Discord Webhook 的檔案上傳大小上限通常為 25MB，若 Telegram 檔案過大可能會發送失敗。
+Ps：超過裝置可用儲存空間也可能失敗！
 
 ## 貢獻與反饋
 如果在使用過程中遇到問題，或者有功能建議，歡迎隨時提出！
