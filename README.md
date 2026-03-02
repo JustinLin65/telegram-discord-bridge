@@ -1,20 +1,21 @@
-# Telegram Discord Forwarder
+# Telegram Discord Bridge
 
 *本專案是我在經營 10K DOG 社群期間，為了在不同應用間同步訊息而開發的自動化工具。*
 
-這是一個基於 Python 開發的輕量級工具，能自動將指定 Telegram 頻道或群組的訊息（包含文字與媒體）同步轉發到 Discord 的指定頻道。
+這是一個基於 Python 開發的輕量級工具，能自動將指定 Telegram 頻道或群組的訊息（包含文字與媒體）同步轉發到 Discord Webhook 或另一個 Telegram 頻道/主題。
 
 ## 核心功能
 
 - **即時監聽**：秒級同步轉發，不漏掉任何重要資訊。
 - **多媒體支援**：除了純文字，還能自動下載並轉發圖片、影片及文件。
-- **頻道過濾**：可設定特定的 `SOURCE_CHAT_ID`，僅轉發你需要的內容。
-- **Topic 過濾**：支援 Telegram Forum 模式，可指定 `TARGET_TOPIC_ID`，只同步特定主題的訊息。
+- **頻道/Topic過濾**：可設定特定的 `source_chat_id` 和 `topic_id`，僅轉發你需要的內容。
 - **自動清理**：媒體檔案轉發後會自動從本地刪除，不佔用硬碟空間。
 - **Webhook 整合**：無需複雜的 Discord Bot 權限，只要有 Webhook 連結即可運作。
-- **身分識別**：會顯示發訊者的名稱，並整合 `ui-avatars.com` API 根據名稱自動生成對應的字母頭像。
-- **大型檔案過濾**： `MAX_FILE_SIZE` 檢查，自動跳過過大的媒體檔案，避免因 Discord 限制（目前為 25MB）導致的發送失敗（若失敗會附上 Telegram 來源連結）。
-- **狀態監控**：終端機（CMD）會詳細顯示下載進度與跳過原因，方便維護。
+- **身分識別**：會顯示發訊者的名稱，並整合 `ui-avatars.com` API 根據名稱自動生成對應的字母頭像（可關閉）。
+- **機器人過濾**：`ignore_bots` 參數可選擇是否忽略其他機器人的訊息，避免無限迴圈或無用雜訊。
+- **Raw API 轉發**：TG -> TG 轉發使用 Telegram Raw API，能**完美保留「轉發自...」標籤**，並在失敗時自動回退至 Copy 模式。
+- **大型檔案過濾**：自動跳過超過 25MB 的檔案，並附上原始 Telegram 連結，確保不因 Discord 限制而崩潰。
+- **除錯模式**：`DEBUG_MODE` 可即時監控所有收到的訊息 ID 與 Topic 資訊，方便設定規則。
 
 ## 使用說明
 
@@ -55,18 +56,21 @@
     API_ID = 1234567                 # 填入你的 API ID
     API_HASH = 'your_hash'           # 填入你的 API Hash
     BOT_TOKEN = 'your_bot_token'     # 填入你的 Bot Token
+
+    DEBUG_MODE = False               # 根據需求自行決定
     ```
     轉發規則：
     ```
     # -------------------------------------------------------
     # 【規則清單 A】: Telegram -> Discord
-    # 設定哪些訊息要轉傳到 Discord Webhook
     # -------------------------------------------------------
         # --- 1: YOUR_DC_FORWARD_RULES_1 ---
         {
-            "source_chat_id": 0,     # 來源頻道 ID
-            "topic_id": 0,           # 來源 Topic ID (None 代表不分 Topic)
-            "webhook_url": "..."     # 填入 Discord Webhook 網址
+            "ignore_bots": True,                          # [過濾] True=不轉發機器人訊息
+            "use_avatar": True,                           # [頭像] True=顯示使用者名字頭像, False=顯示預設機器人圖示
+            "source_chat_id": your_source_chat_id_here,   # 來源頻道 ID
+            "topic_id": your_topic_id_here,               # 來源 Topic ID
+            "webhook_url": "https://discord.com/api/webhooks/your_webhook_url_here"     # Discord Webhook URL
         },
 
     # -------------------------------------------------------
@@ -75,10 +79,11 @@
     # -------------------------------------------------------
         # --- 1. YOUR_TG_FORWARD_RULES ---
         {
-            "source_chat_id": 0,     # 來源頻道
-            "topic_id": 0,           # 來源 Topic ID (None 代表不分 Topic)
-            "dest_chat_id": 0,       # 目標頻道
-            "dest_topic_id": 0       # 目標 Topic ID (普通群組填 None)
+            "ignore_bots": False,                         # [過濾] True=不轉發機器人訊息
+            "source_chat_id": your_source_chat_id_here,   # 來源頻道
+            "topic_id": your_source_topic_id_here,        # 來源 Topic ID
+            "dest_chat_id": your_dest_chat_id_here,       # 目標頻道
+            "dest_topic_id": your_dest_topic_id_here      # 目標 Topic ID
         },
     
     MAX_FILE_SIZE = 25 * 1024 * 1024 # 檔案大小限制 (預設 25MB)(根據需求自行修改)
@@ -90,7 +95,8 @@
 
 ## ⚠️ 注意事項
 
-檔案限制：Discord Webhook 的檔案上傳大小上限通常為 25MB，若 Telegram 檔案過大可能會發送失敗。
+- 權限：機器人必須是來源頻道與目標頻道的管理員（Admin），確保有查看和發送訊息的權限。
+- 檔案限制：Discord Webhook 的檔案上傳大小上限通常為 25MB，若 Telegram 檔案過大可能會發送失敗。
 Ps：超過裝置可用儲存空間也可能失敗！
 
 ## 貢獻與反饋

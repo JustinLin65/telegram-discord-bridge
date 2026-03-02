@@ -3,6 +3,24 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [2.1.0] - 2026
+
+### Added
+- **除錯模式 (DEBUG_MODE)**：新增全域除錯開關，開啟後可顯示所有傳入訊息的詳細資訊（Chat ID, Topic ID, Bot 判定），簡化設定流程。
+- **機器人過濾邏輯**：在轉發規則中新增 `ignore_bots` 選項，可自定義是否過濾掉來源頻道的機器人訊息，有效防止 Bot-to-Bot 迴圈。
+- **Raw API 支援**：TG 轉 TG 轉發改用 `functions.messages.ForwardMessagesRequest`。
+    - **優點**：保留原始訊息的轉發來源標籤。
+    - **穩定性**：新增自動回退機制，若 Raw API 調用失敗將自動切換回 `send_message` (Copy Mode)。
+- **萬用匹配 (Wildcard Support)**：`topic_id` 現在支援設定為 `0`。當設為 `0` 時，系統將忽略主題判斷，轉發該頻道下的所有訊息。
+- **頭像自定義**：Discord 規則新增 `use_avatar` 開關，使用者可選擇顯示發訊者頭像或維持 Webhook 預設圖示。
+
+### Changed
+- **邏輯結構優化**：重構了 `handler` 內的規則匹配流程，現在能更精確地處理多重規則重疊的情況。
+- **錯誤處理強化**：針對媒體下載與網路請求加入更多 `try-except` 保護，提升程式長時間運行的穩定性。
+
+### Fixed
+- **Topic ID 抓取修正**：修正了在特定 Forum 群組下無法正確取得 `reply_to_top_id` 的邊緣案例。
+
 ## [2.0.0]
 
 ### Added
