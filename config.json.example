@@ -1,0 +1,71 @@
+{
+  "debug": true,                             # 是否啟用除錯模式，啟用後將輸出更詳細日誌
+  "max_file_size": 25,                       # 最大文件大小，單位MB
+  "paths": [
+    {
+      "name": "1. YOUR_TG_FORWARD_RULES",    # 規則名稱
+      "source_id": -1001234567890,           # 來源頻道ID
+      "source_topic": 1234,                  # 來源主題ID，沒有主題則為0
+      "target_type": "TG",                   # 目標平台，TG或DC
+      "target_id": -1001234567890,           # 目標頻道ID或DC Webhook URL
+      "target_topic": 123,                   # 目標主題ID，沒有主題則為0
+      "settings": {
+        "forward_mode": "raw",               # 轉發模式，raw或stripped，raw僅對TG目標有效
+        "use_ui_avatars": false,             # 是否使用ui-avatars.com，僅對DC目標有效
+        "show_sender_name": false,           # 是否顯示發送者名稱，僅對DC目標有效
+        "avatar_blacklist": ["Justin Lin"],  # 頭像黑名單，以顯示名稱辨別。包含的用戶頭像將不會被轉發，僅對DC目標有效
+        "platform_prefix": false,            # 是否在訊息前添加平台前綴，僅對DC目標有效
+        "forward_bot_msg": false,            # 是否轉發機器人訊息，僅對TG目標有效
+        "show_reply_tag": false              # 是否在轉發的訊息中添加回覆標籤
+      }
+    },
+    {
+      "name": "2. YOUR_TG_FORWARD_RULES",
+      "source_id": -1000987654321,
+      "source_topic": 0,
+      "target_type": "TG",
+      "target_id": -1000987654321,
+      "target_topic": 0,
+      "settings": {
+        "forward_mode": "stripped",
+        "use_ui_avatars": true,
+        "show_sender_name": true,
+        "platform_prefix": false,
+        "forward_bot_msg": false,
+        "show_reply_tag": true
+      }
+    },
+    {
+      "name": "1. YOUR_DC_FORWARD_RULES",
+      "source_id": -1002345678901,
+      "source_topic": 2345,
+      "target_type": "DC",
+      "target_id": "https://discord.com/api/webhooks/your_webhook_url_here",
+      "target_topic": 0,
+      "settings": {
+        "forward_mode": "stripped",
+        "use_ui_avatars": false,
+        "show_sender_name": true,
+        "platform_prefix": false,
+        "forward_bot_msg": false,
+        "show_reply_tag": false
+      }
+    },
+    {
+      "name": "2. YOUR_DC_FORWARD_RULES",
+      "source_id": -1003456789012,
+      "source_topic": 34567,
+      "target_type": "DC",
+      "target_id": "https://discord.com/api/webhooks/your_webhook_url_here",
+      "target_topic": 0,
+      "settings": {
+        "forward_mode": "stripped",
+        "use_ui_avatars": false,
+        "show_sender_name": true,
+        "platform_prefix": false,
+        "forward_bot_msg": false,
+        "show_reply_tag": false
+      }
+    }
+  ]
+}

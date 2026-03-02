@@ -12,8 +12,8 @@
 - **自動清理**：媒體檔案轉發後會自動從本地刪除，不佔用硬碟空間。
 - **Webhook 整合**：無需複雜的 Discord Bot 權限，只要有 Webhook 連結即可運作。
 - **身分識別**：會顯示發訊者的名稱，並整合 `ui-avatars.com` API 根據名稱自動生成對應的字母頭像（可關閉）。
-- **機器人過濾**：`ignore_bots` 參數可選擇是否忽略其他機器人的訊息，避免無限迴圈或無用雜訊。
-- **Raw API 轉發**：TG -> TG 轉發使用 Telegram Raw API，能**完美保留「轉發自...」標籤**，並在失敗時自動回退至 Copy 模式。
+- **機器人過濾**：`ignore_bots` 可選擇是否忽略其他機器人的訊息，避免無限迴圈或無用雜訊。
+- **雙模轉發**：TG -> TG 支援 **Raw API (保留轉發標籤)** 與 **Copy Mode (自定義標頭)** 雙模式。
 - **大型檔案過濾**：自動跳過超過 25MB 的檔案，並附上原始 Telegram 連結，確保不因 Discord 限制而崩潰。
 - **除錯模式**：`DEBUG_MODE` 可即時監控所有收到的訊息 ID 與 Topic 資訊，方便設定規則。
 
@@ -25,7 +25,7 @@
 
     安裝必要的套件：
 
-    `pip install telethon requests`
+    `pip install -r requirements.txt`
 
 2. **取得憑證**
 
@@ -51,42 +51,37 @@
 
 3. **設定程式碼**
     
-    開啟 `main.py`，修改 `設定區` 的內容：
+   在專案根目錄建立 `.env` 檔案，填入以下資訊：
     ```
-    API_ID = 1234567                 # 填入你的 API ID
-    API_HASH = 'your_hash'           # 填入你的 API Hash
-    BOT_TOKEN = 'your_bot_token'     # 填入你的 Bot Token
-
-    DEBUG_MODE = False               # 根據需求自行決定
+    TG_API_ID=your_api_hash_here
+    TG_API_HASH=your_api_hash_here
+    TG_BOT_TOKEN=your_bot_token_here
     ```
-    轉發規則：
+    並參考 config.json.example 建立 config.json，確保移除非標準 JSON 的註解文字（如 # 號部分）。
     ```
-    # -------------------------------------------------------
-    # 【規則清單 A】: Telegram -> Discord
-    # -------------------------------------------------------
-        # --- 1: YOUR_DC_FORWARD_RULES_1 ---
+    {
+      "debug": true,                            # 是否啟用除錯模式，啟用後將輸出更詳細日誌
+      "max_file_size": 25,                      # 最大文件大小，單位MB
+      "paths": [
         {
-            "ignore_bots": True,                          # [過濾] True=不轉發機器人訊息
-            "use_avatar": True,                           # [頭像] True=顯示使用者名字頭像, False=顯示預設機器人圖示
-            "source_chat_id": your_source_chat_id_here,   # 來源頻道 ID
-            "topic_id": your_topic_id_here,               # 來源 Topic ID
-            "webhook_url": "https://discord.com/api/webhooks/your_webhook_url_here"     # Discord Webhook URL
-        },
-
-    # -------------------------------------------------------
-    # 【規則清單 B】: Telegram -> Telegram
-    # 設定哪些訊息要轉傳到另一個 TG 頻道/Topic
-    # -------------------------------------------------------
-        # --- 1. YOUR_TG_FORWARD_RULES ---
-        {
-            "ignore_bots": False,                         # [過濾] True=不轉發機器人訊息
-            "source_chat_id": your_source_chat_id_here,   # 來源頻道
-            "topic_id": your_source_topic_id_here,        # 來源 Topic ID
-            "dest_chat_id": your_dest_chat_id_here,       # 目標頻道
-            "dest_topic_id": your_dest_topic_id_here      # 目標 Topic ID
-        },
-    
-    MAX_FILE_SIZE = 25 * 1024 * 1024 # 檔案大小限制 (預設 25MB)(根據需求自行修改)
+          "name": "1. YOUR_TG_FORWARD_RULES",   # 規則名稱
+          "source_id": -1001234567890,          # 來源頻道ID
+          "source_topic": 1234,                 # 來源主題ID，沒有主題則為0
+          "target_type": "TG",                  # 目標平台，TG或DC
+          "target_id": -1001234567890,          # 目標頻道ID或DC Webhook URL
+          "target_topic": 123,                  # 目標主題ID，沒有主題則為0
+          "settings": {
+            "forward_mode": "raw",              # 轉發模式，raw或stripped，raw僅對TG目標有效
+            "use_ui_avatars": false,            # 是否使用ui-avatars.com，僅對DC目標有效
+            "show_sender_name": false,          # 是否顯示發送者名稱，僅對DC目標有效
+            "avatar_blacklist": ["Justin Lin"], # 頭像黑名單，以顯示名稱辨別。包含的用戶頭像將不會被轉發，僅對DC目標有效
+            "platform_prefix": false,           # 是否在訊息前添加平台前綴，僅對DC目標有效
+            "forward_bot_msg": false,           # 是否轉發機器人訊息，僅對TG目標有效
+            "show_reply_tag": false             # 是否在轉發的訊息中添加回覆標籤
+          }
+        }
+      ]
+    }
     ```
 
 4. **啟動程式**
@@ -96,6 +91,8 @@
 ## ⚠️ 注意事項
 
 - 權限：機器人必須是來源頻道與目標頻道的管理員（Admin），確保有查看和發送訊息的權限。
+- 格式：config.json 格式必須完全正確，否則程式會拒絕啟動以保護運行安全。
+- 格式2：標準的 JSON 格式不支援任何形式的註解。正式運行時不可包含 `#` 及其後的內容。
 - 檔案限制：Discord Webhook 的檔案上傳大小上限通常為 25MB，若 Telegram 檔案過大可能會發送失敗。
 Ps：超過裝置可用儲存空間也可能失敗！
 

@@ -3,6 +3,30 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [3.0.0] - 2026-03-02
+
+### Added
+- **環境變數支援 (.env)**：敏感資訊（API ID, Hash, Bot Token）移至 `.env` 檔案管理，提升安全性並方便進行版本控制。
+- **外部 JSON 設定檔 (config.json)**：
+    - 導入 `load_config_strictly()` 函式，啟動時會嚴格檢查 JSON 格式。
+    - 轉發規則移至設定檔，支援更靈活的 `paths` 路由架構。
+- **增強型回覆標籤 (Reply Tag)**：
+    - 新增 `get_reply_tag` 邏輯，能自動辨識訊息是否為回覆。
+    - 支援回覆內容摘要（截取前 20 字）。
+- **細節設定選項**：
+    - `platform_prefix`：可選擇是否在轉發訊息前加上 `[TG]` 標籤。
+    - `show_reply_tag`：可自定義是否顯示回覆來源摘要。
+    - `avatar_blacklist`：新增頭像黑名單，特定用戶可不顯示自動生成的頭像。
+- **可自定義檔案大小**：`max_file_size` 現在可直接在 JSON 設定，不需修改程式碼。
+
+### Changed
+- **架構重構**：將 `handler` 拆分為 `process_dc_path` 與 `process_tg_path`，提升代碼可讀性與擴展性。
+- **TG 轉發邏輯優化**：在 Copy 模式下也支援 `header_lines`（包含 Prefix 與 Name），使 TG 轉 TG 的訊息呈現更一致。
+- **穩定性提升**：網路請求加入 `timeout=15` 限制，防止因 Discord API 回應過慢導致程式卡死。
+
+### Fixed
+- **Topic ID 預設值**：統一將 Topic ID 的預設/萬用匹配值設為 `0`。
+
 ## [2.1.0] - 2026
 
 ### Added
