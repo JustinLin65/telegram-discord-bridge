@@ -50,14 +50,17 @@
     1. 在 Discord 頻道設定 -> 整合 -> 建立 Webhook 並複製網址。
 
 3. **設定程式碼**
-    
+
    在專案根目錄建立 `.env` 檔案，填入以下資訊：
-    ```
+
+    ```bash
     TG_API_ID=your_api_hash_here
     TG_API_HASH=your_api_hash_here
     TG_BOT_TOKEN=your_bot_token_here
     ```
+
     並參考 config.json.example 建立 config.json，確保移除非標準 JSON 的註解文字（如 # 號部分）。
+
     ```
     {
       "debug": true,                            # 是否啟用除錯模式，啟用後將輸出更詳細日誌
@@ -97,10 +100,13 @@
 Ps：超過裝置可用儲存空間也可能失敗！
 
 ## 貢獻與反饋
+
 如果在使用過程中遇到問題，或者有功能建議，歡迎隨時提出！
 
-##未來 Roadmap
+## 未來 Roadmap
+
 - 支援讀取 YAML 配置
 - 支援Markdown語法同步
 - 增加 DC2TG 同步功能
 - 增加視覺化 GUI 介面
+- 重構以增加「通用格式」層
