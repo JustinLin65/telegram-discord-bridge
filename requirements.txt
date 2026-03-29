@@ -1,5 +1,8 @@
-telethon
-requests
-python-dotenv
-discord.py
-aiohttp
+telethon>=1.38.1
+requests>=2.32.3
+python-dotenv>=1.0.1
+discord.py>=2.4.0
+aiohttp>=3.10.11
+urllib3>=2.2.2
+zipp>=3.19.1
+pyasn1>=0.6.0
