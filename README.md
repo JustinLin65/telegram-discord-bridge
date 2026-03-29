@@ -36,9 +36,9 @@ TG_BOT_TOKEN='your_telegram_bot_token'
 DC_BOT_TOKEN='your_discord_bot_token'
 ```
 
-## 設定檔（main_new.py）
+## 設定檔（main.py）
 
-`main_new.py` 會讀取兩個檔案：
+`main.py` 會讀取兩個檔案：
 
 - `dc2tg_config.json`：Discord -> Telegram 規則清單（陣列）
 - `tg2dctg_config.json`：Telegram -> Discord / Telegram 全域設定（物件）
@@ -55,7 +55,7 @@ DC_BOT_TOKEN='your_discord_bot_token'
 新版：
 
 ```bash
-python main_new.py
+python main.py
 ```
 
 ## 權限與注意事項
