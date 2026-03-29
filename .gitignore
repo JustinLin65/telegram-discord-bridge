@@ -1,2 +1,6 @@
 .env
 config.json
+dc2tg_config.json
+tg2dctg_config.json
+.session
+.session-journal

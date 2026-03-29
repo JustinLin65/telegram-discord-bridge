@@ -3,6 +3,19 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [4.0.0] - 2026-03
+
+### Added
+
+- **Discord -> Telegram 雙向橋接**：新增 Discord Bot 端事件監聽，支援頻道訊息、貼圖、自定義表情、附件與 GIF 轉發到 Telegram。
+- **雙設定檔架構**：新增 `dc2tg_config.json`（DC->TG）與 `tg2dctg_config.json`（TG->DC/TG）分離式配置。
+- **Discord Bot Token 環境變數**：新增 `DC_BOT_TOKEN`，整合至 `.env` 流程。
+
+### Changed
+
+- **啟動流程整合**：以 `asyncio.gather()` 同步啟動 Discord 與 Telegram 服務。
+- **文件與範例更新**：README、`.env.example`、依賴清單與設定範本改為雙向橋接使用情境。
+
 ## [3.0.0] - 2026-03-02
 
 ### Added
