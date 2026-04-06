@@ -1,7 +1,9 @@
 # Telegram Discord Bridge
+
 *本專案是我在經營 10K DOG 社群期間，為了在不同應用間同步訊息而開發的自動化工具。*
 
 雙向訊息橋接工具，支援：
+
 - Discord 頻道 -> Telegram 群組 / Topic
 - Telegram 群組 / Topic -> Discord Webhook
 - Telegram -> Telegram（raw forward / stripped copy）
@@ -9,10 +11,12 @@
 ## 核心功能
 
 - 即時轉發文字、圖片、GIF、貼圖與附件
+- Telegram Topic / Thread 識別優化（精確匹配 `source_topic`）
+- 發送者名稱顯示控制（`show_sender_name`，關閉時顯示為WebHook預設名稱）
 - Telegram Topic 過濾（`source_topic` / `target_topic`）
 - 可設定是否轉發 Bot 訊息（`forward_bot_msg`）
 - TG -> TG 支援 `raw` 與 `stripped` 模式
-- TG -> DC 可自動套用 `ui-avatars.com` 頭像
+- TG -> DC 可自動根據顯示名稱套用 `ui-avatars.com` 頭像
 - 檔案大小限制（`max_file_size`，單位 MB）
 - 啟用 `debug` 後可輸出完整匹配資訊
 

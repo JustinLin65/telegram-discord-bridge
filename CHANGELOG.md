@@ -3,6 +3,13 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [4.0.1] - 2026-04
+
+### Changed
+
+- **Telegram Topic (Thread) 識別優化**：重構 Topic ID 判定邏輯，支援更精確的 Top ID 與已知 Topic ID 匹配，防止訊息掉入 General。
+- **檔案發送穩定性提升**：優化媒體檔案的大小判定，支援 `animation`（GIF）與 `document` 等多種類型的檔案大小檢查。
+
 ## [4.0.0] - 2026-03
 
 ### Added

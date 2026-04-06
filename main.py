@@ -218,11 +218,25 @@ async def tg_handler(event):
     # 改進的 Topic ID 偵測邏輯
     current_topic_id = 0
     if event.message.reply_to:
-        # reply_to_top_id 是正式的 Thread ID
-        current_topic_id = getattr(event.message.reply_to, 'reply_to_top_id', None)
-        # 如果沒有 top_id，嘗試取 msg_id (有些主題的第一條訊息會是這樣)
-        if current_topic_id is None:
-            current_topic_id = event.message.reply_to.reply_to_msg_id or 0
+        # 獲取配置中此群組所有已知的話題 ID (排除 0 和 1)
+        known_topics = {
+            p['source_topic'] for p in TG2DC_CONFIG.get("paths", [])
+            if p.get('source_id') == chat_id and isinstance(p.get('source_topic'), int) and p['source_topic'] > 1
+        }
+        
+        reply_obj = event.message.reply_to
+        top_id = getattr(reply_obj, 'reply_to_top_id', None)
+        msg_id = reply_obj.reply_to_msg_id
+        
+        if top_id:
+            # 情況 A：在話題內部的回覆，使用官方 thread ID
+            current_topic_id = top_id
+        elif msg_id in known_topics:
+            # 情況 B：回覆的是話題標題訊息，則該 msg_id 就是 Topic ID
+            current_topic_id = msg_id
+        else:
+            # 情況 C：回覆的是普通訊息且非已知話題，視為 General (0)
+            current_topic_id = 0
 
     sender = await event.get_sender()
     is_bot = getattr(sender, 'bot', False)
@@ -254,12 +268,16 @@ async def tg_handler(event):
 async def forward_tg_to_dc(event, path, sender_name, is_bot):
     settings = path.get("settings", {})
     max_bytes = TG2DC_CONFIG.get("max_file_size", 25) * 1024 * 1024
-    
+
+    # 決定顯示名稱
+    display_name = sender_name if settings.get("show_sender_name", True) else ""
+
     avatar_url = None
     if settings.get("use_ui_avatars", False):
-        avatar_url = f"https://ui-avatars.com/api/?name={urllib.parse.quote(sender_name)}&background=random"
+        avatar_url = f"https://ui-avatars.com/api/?name={urllib.parse.quote(display_name)}&background=random"
 
     msg_text = event.message.message or ""
+
     header_lines = []
     if settings.get("platform_prefix", False): header_lines.append("[TG]")
     if settings.get("show_reply_tag", False):
@@ -269,12 +287,15 @@ async def forward_tg_to_dc(event, path, sender_name, is_bot):
     full_text = ("\n".join(header_lines) + "\n" + msg_text).strip()
     
     file_path = None
-    if event.message.media and hasattr(event.message, 'file') and event.message.file.size <= max_bytes:
-        file_path = await event.download_media()
-    elif event.message.media:
-        full_text += "\n\n⚠️ [媒體過大，未轉發]"
+    if event.message.file:
+        # 取得檔案大小，如果為 None 則預設為 0 以避免比較錯誤
+        file_size = event.message.file.size or 0
+        if file_size <= max_bytes:
+            file_path = await event.download_media()
+        else:
+            full_text += "\n\n⚠️ [媒體過大，未轉發]"
 
-    await send_to_discord_webhook(path['target_id'], sender_name, full_text, file_path, avatar_url)
+    await send_to_discord_webhook(path['target_id'], display_name, full_text, file_path, avatar_url)
     if file_path and os.path.exists(file_path): os.remove(file_path)
 
 async def forward_tg_to_tg(event, path, sender_name, is_bot):
