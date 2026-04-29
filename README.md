@@ -10,15 +10,20 @@
 
 ## 核心功能
 
-- 即時轉發文字、圖片、GIF、貼圖與附件
-- Telegram Topic / Thread 識別優化（精確匹配 `source_topic`）
-- 發送者名稱顯示控制（`show_sender_name`，關閉時顯示為WebHook預設名稱）
-- Telegram Topic 過濾（`source_topic` / `target_topic`）
-- 可設定是否轉發 Bot 訊息（`forward_bot_msg`）
-- TG -> TG 支援 `raw` 與 `stripped` 模式
-- TG -> DC 可自動根據顯示名稱套用 `ui-avatars.com` 頭像
-- 檔案大小限制（`max_file_size`，單位 MB）
-- 啟用 `debug` 後可輸出完整匹配資訊
+- **即時轉發**：支援文字、圖片、GIF、貼圖與附件。
+- **雙向橋接**：Discord <-> Telegram 整合。
+- **效能優化**：採用 **Global Session Pool** 複用連線，降低延遲與資源開銷。
+- **穩定性控制**：引入 **Concurrency Control (Semaphore)** 限制併發任務，防止速率限制。
+- **精確識別**：Telegram Topic / Thread 優化識別（精確匹配 `source_topic`）。
+- **高度自定義**：支援發送者名稱控制、頭像自動生成（UI Avatars）、檔案大小限制（`max_file_size`）。
+- **靈活過濾**：可設定是否轉發 Bot 訊息，並支援多種 TG -> TG 轉發模式。
+- **偵錯友善**：啟用 `debug` 模式後可輸出完整匹配資訊與處理日誌。
+
+## 技術亮點
+
+- **Connection Pooling**: 透過 `aiohttp.ClientSession` 全域管理，減少頻繁建立/關閉 TCP 連線的握手開銷，這在轉發大量圖片或頻繁通訊時非常有感。
+- **Concurrency Limiting**: 使用 `asyncio.Semaphore` 將並行處理數限制在安全範圍內（預設 5），有效避免在瞬間爆量訊息時被 Telegram/Discord API 暫時封鎖或耗盡系統 Socket 資源。
+- **Event Filter**: 在 Telegram 端採用 `chats` 篩選器，讓機器人只對特定群組的事件產生反應，而非監聽所有加入的群組再進行過濾，極大地優化了大型帳號下的運作效率。
 
 ## 安裝
 
@@ -26,7 +31,7 @@
 2. 安裝依賴：
 
 ```bash
-pip install -r requirements.txt
+pip install discord.py aiohttp telethon python-dotenv
 ```
 
 ## 環境變數
@@ -40,23 +45,16 @@ TG_BOT_TOKEN='your_telegram_bot_token'
 DC_BOT_TOKEN='your_discord_bot_token'
 ```
 
-## 設定檔（main.py）
+## 設定檔
 
-`main.py` 會讀取兩個檔案：
+本程式會自動載入以下兩個 JSON 配置：
 
-- `dc2tg_config.json`：Discord -> Telegram 規則清單（陣列）
-- `tg2dctg_config.json`：Telegram -> Discord / Telegram 全域設定（物件）
+- `dc2tg_config.json`：Discord -> Telegram 規則（Array）
+- `tg2dctg_config.json`：Telegram -> Discord / Telegram 全域設定（Object）
 
-可參考：
-
-- `dc2tg_config.json.example`
-- `tg2dctg_config.json.example`
-
-> 注意：JSON 正式格式不支援註解，使用前請移除所有 `#` 註解說明。
+> 注意：JSON 格式不支援註解，使用前請移除所有說明文字。
 
 ## 啟動
-
-新版：
 
 ```bash
 python main.py
@@ -75,7 +73,7 @@ python main.py
 
 ## 未來 Roadmap
 
-- 支援讀取 YAML 配置
-- 支援Markdown語法同步
-- 增加視覺化 GUI 介面
-- 重構以增加「通用格式」層
+- [ ] 支援讀取 YAML 配置
+- [ ] 支援 Markdown 語法同步
+- [ ] 增加視覺化 GUI 介面
+- [ ] 重構以增加「通用格式」層 (Common Message Schema)

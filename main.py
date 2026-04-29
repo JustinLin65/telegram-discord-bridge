@@ -1,3 +1,4 @@
+# Telegram Discord Bridge v4.1.0
 import discord
 import aiohttp
 import asyncio
@@ -27,9 +28,11 @@ TG_API_HASH = os.getenv('TG_API_HASH')
 if TG_API_ID:
     TG_API_ID = int(TG_API_ID)
 
-# 全域變數儲存規則
+# 全域變數
 DC2TG_RULES = []
 TG2DC_CONFIG = None
+SESSION = None  # 全域 aiohttp Session
+FORWARD_SEMAPHORE = None # 在 main 中初始化並限制併發
 
 # ==================== 設定檔載入邏輯 ====================
 
@@ -73,45 +76,43 @@ class DiscordClient(discord.Client):
         print(f'----------------------------------------')
 
     async def download_file(self, url):
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        return io.BytesIO(await resp.read())
-            except Exception as e:
-                print(f"   [!] DC 下載失敗 ({url}): {e}")
-            return None
+        try:
+            async with SESSION.get(url) as resp:
+                if resp.status == 200:
+                    return io.BytesIO(await resp.read())
+        except Exception as e:
+            print(f"   [!] DC 下載失敗 ({url}): {e}")
+        return None
 
     async def send_to_telegram(self, chat_id, thread_id, text, file_data=None, filename=None, send_type="document"):
         base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-        async with aiohttp.ClientSession() as session:
-            try:
-                if file_data:
-                    method = "sendPhoto" if send_type == "photo" else ("sendAnimation" if send_type == "animation" else "sendDocument")
-                    file_field = "photo" if send_type == "photo" else ("animation" if send_type == "animation" else "document")
-                    
-                    data = aiohttp.FormData(quote_fields=False)
-                    data.add_field('chat_id', str(chat_id))
-                    data.add_field('caption', text)
-                    data.add_field('parse_mode', 'Markdown')
-                    if thread_id:
-                        data.add_field('message_thread_id', str(thread_id))
-                    
-                    file_data.seek(0)
-                    data.add_field(file_field, file_data, filename=filename or "file")
-                    
-                    async with session.post(f"{base_url}/{method}", data=data) as resp:
-                        res_json = await resp.json()
-                        if not res_json.get("ok") and "IMAGE_PROCESS_FAILED" in res_json.get("description", ""):
-                            return await self.send_to_telegram(chat_id, thread_id, text, file_data, filename, send_type="document")
-                        return res_json
-                else:
-                    payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown', 'disable_web_page_preview': True}
-                    if thread_id: payload['message_thread_id'] = thread_id
-                    async with session.post(f"{base_url}/sendMessage", json=payload) as resp:
-                        return await resp.json()
-            except Exception as e:
-                print(f"   [!] 發送至 Telegram 錯誤: {e}")
+        try:
+            if file_data:
+                method = "sendPhoto" if send_type == "photo" else ("sendAnimation" if send_type == "animation" else "sendDocument")
+                file_field = "photo" if send_type == "photo" else ("animation" if send_type == "animation" else "document")
+                
+                data = aiohttp.FormData(quote_fields=False)
+                data.add_field('chat_id', str(chat_id))
+                data.add_field('caption', text)
+                data.add_field('parse_mode', 'Markdown')
+                if thread_id:
+                    data.add_field('message_thread_id', str(thread_id))
+                
+                file_data.seek(0)
+                data.add_field(file_field, file_data, filename=filename or "file")
+                
+                async with SESSION.post(f"{base_url}/{method}", data=data) as resp:
+                    res_json = await resp.json()
+                    if not res_json.get("ok") and "IMAGE_PROCESS_FAILED" in res_json.get("description", ""):
+                        return await self.send_to_telegram(chat_id, thread_id, text, file_data, filename, send_type="document")
+                    return res_json
+            else:
+                payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown', 'disable_web_page_preview': True}
+                if thread_id: payload['message_thread_id'] = thread_id
+                async with SESSION.post(f"{base_url}/sendMessage", json=payload) as resp:
+                    return await resp.json()
+        except Exception as e:
+            print(f"   [!] 發送至 Telegram 錯誤: {e}")
 
     async def on_message(self, message):
         if message.author.bot:
@@ -119,7 +120,12 @@ class DiscordClient(discord.Client):
 
         for rule in DC2TG_RULES:
             if message.channel.id == rule["discord_channel_id"]:
-                asyncio.create_task(self.process_forward(message, rule))
+                # 使用 Semaphore 限制併發處理
+                asyncio.create_task(self.wrapped_process_forward(message, rule))
+
+    async def wrapped_process_forward(self, message, rule):
+        async with FORWARD_SEMAPHORE:
+            await self.process_forward(message, rule)
 
     async def process_forward(self, message, rule):
         header = f"*{message.author.display_name}*"
@@ -186,18 +192,17 @@ class DiscordClient(discord.Client):
 tg_client = TelegramClient('integrated_bot_session', TG_API_ID, TG_API_HASH)
 
 async def send_to_discord_webhook(webhook_url, username, text=None, file_path=None, avatar_url=None):
-    async with aiohttp.ClientSession() as session:
-        data = aiohttp.FormData()
-        data.add_field('username', username)
-        if text: data.add_field('content', text)
-        if avatar_url: data.add_field('avatar_url', avatar_url)
-        if file_path:
-            data.add_field('file', open(file_path, 'rb'), filename=os.path.basename(file_path))
-        try:
-            async with session.post(webhook_url, data=data) as resp:
-                return await resp.text()
-        except Exception as e:
-            print(f"   [X] Discord Webhook 發送失敗: {e}")
+    data = aiohttp.FormData()
+    data.add_field('username', username)
+    if text: data.add_field('content', text)
+    if avatar_url: data.add_field('avatar_url', avatar_url)
+    if file_path:
+        data.add_field('file', open(file_path, 'rb'), filename=os.path.basename(file_path))
+    try:
+        async with SESSION.post(webhook_url, data=data) as resp:
+            return await resp.text()
+    except Exception as e:
+        print(f"   [X] Discord Webhook 發送失敗: {e}")
 
 async def get_reply_tag(event):
     if not event.message.reply_to: return None
@@ -209,68 +214,69 @@ async def get_reply_tag(event):
         return f"💬 回覆: {content_summary}" if content_summary else "💬 回覆訊息"
     except: return "💬 回覆訊息"
 
-@tg_client.on(events.NewMessage)
 async def tg_handler(event):
     if not TG2DC_CONFIG: return
     
-    chat_id = event.chat_id
-    
-    # 改進的 Topic ID 偵測邏輯
-    current_topic_id = 0
-    if event.message.reply_to:
-        # 獲取配置中此群組所有已知的話題 ID (排除 0 和 1)
-        known_topics = {
-            p['source_topic'] for p in TG2DC_CONFIG.get("paths", [])
-            if p.get('source_id') == chat_id and isinstance(p.get('source_topic'), int) and p['source_topic'] > 1
-        }
+    # 使用 Semaphore 限制併發處理
+    async with FORWARD_SEMAPHORE:
+        chat_id = event.chat_id
         
-        reply_obj = event.message.reply_to
-        top_id = getattr(reply_obj, 'reply_to_top_id', None)
-        msg_id = reply_obj.reply_to_msg_id
-        
-        if top_id:
-            # 情況 A：在話題內部的回覆，使用官方 thread ID
-            current_topic_id = top_id
-        elif msg_id in known_topics:
-            # 情況 B：回覆的是話題標題訊息，則該 msg_id 就是 Topic ID
-            current_topic_id = msg_id
-        else:
-            # 情況 C：回覆的是普通訊息且非已知話題，視為 General (0)
-            current_topic_id = 0
-
-    sender = await event.get_sender()
-    is_bot = getattr(sender, 'bot', False)
-    fname = getattr(sender, 'first_name', '') or ''
-    lname = getattr(sender, 'last_name', '') or ''
-    sender_name = f"{fname} {lname}".strip() or getattr(sender, 'title', "User")
-
-    # Debug 日誌：讓你知道現在偵測到什麼
-    if TG2DC_CONFIG.get("debug", True):
-        print(f"DEBUG | 收到訊息: Chat={chat_id} | Topic={current_topic_id} | From={sender_name}")
-
-    for path in TG2DC_CONFIG.get("paths", []):
-        if path['source_id'] == chat_id:
-            # 判斷 Topic：設定為 0 (不限) 或者 ID 匹配
-            # 增加特殊處理：如果設定為 1 但偵測到 0，通常是 General 主題
-            match_topic = (path['source_topic'] == 0 or 
-                          path['source_topic'] == current_topic_id or
-                          (path['source_topic'] == 1 and current_topic_id == 0))
+        # 改進的 Topic ID 偵測邏輯
+        current_topic_id = 0
+        if event.message.reply_to:
+            # 獲取配置中此群組所有已知的話題 ID (排除 0 和 1)
+            known_topics = {
+                p['source_topic'] for p in TG2DC_CONFIG.get("paths", [])
+                if p.get('source_id') == chat_id and isinstance(p.get('source_topic'), int) and p['source_topic'] > 1
+            }
             
-            if match_topic:
-                settings = path.get("settings", {})
-                if not settings.get("forward_bot_msg", True) and is_bot: continue
+            reply_obj = event.message.reply_to
+            top_id = getattr(reply_obj, 'reply_to_top_id', None)
+            msg_id = reply_obj.reply_to_msg_id
+            
+            if top_id:
+                # 情況 A：在話題內部的回覆，使用官方 thread ID
+                current_topic_id = top_id
+            elif msg_id in known_topics:
+                # 情況 B：回覆的是話題標題訊息，則該 msg_id 就是 Topic ID
+                current_topic_id = msg_id
+            else:
+                # 情況 C：回覆的是普通訊息且非已知話題，視為 General (0)
+                current_topic_id = 0
 
-                if path['target_type'] == "DC":
-                    await forward_tg_to_dc(event, path, sender_name, is_bot)
-                elif path['target_type'] == "TG":
-                    await forward_tg_to_tg(event, path, sender_name, is_bot)
+        sender = await event.get_sender()
+        is_bot = getattr(sender, 'bot', False)
+        fname = getattr(sender, 'first_name', '') or ''
+        lname = getattr(sender, 'last_name', '') or ''
+        sender_name = f"{fname} {lname}".strip() or getattr(sender, 'title', "User")
+
+        # Debug 日誌：讓你知道現在偵測到什麼
+        if TG2DC_CONFIG.get("debug", True):
+            print(f"DEBUG | 收到訊息: Chat={chat_id} | Topic={current_topic_id} | From={sender_name}")
+
+        for path in TG2DC_CONFIG.get("paths", []):
+            if path['source_id'] == chat_id:
+                # 判斷 Topic：設定為 0 (不限) 或者 ID 匹配
+                # 增加特殊處理：如果設定為 1 但偵測到 0，通常是 General 主題
+                match_topic = (path['source_topic'] == 0 or 
+                              path['source_topic'] == current_topic_id or
+                              (path['source_topic'] == 1 and current_topic_id == 0))
+                
+                if match_topic:
+                    settings = path.get("settings", {})
+                    if not settings.get("forward_bot_msg", True) and is_bot: continue
+
+                    if path['target_type'] == "DC":
+                        await forward_tg_to_dc(event, path, sender_name, is_bot)
+                    elif path['target_type'] == "TG":
+                        await forward_tg_to_tg(event, path, sender_name, is_bot)
 
 async def forward_tg_to_dc(event, path, sender_name, is_bot):
     settings = path.get("settings", {})
     max_bytes = TG2DC_CONFIG.get("max_file_size", 25) * 1024 * 1024
 
     # 決定顯示名稱
-    display_name = sender_name if settings.get("show_sender_name", True) else ""
+    display_name = sender_name if settings.get("show_sender_name", True) else "Bridge Bot"
 
     avatar_url = None
     if settings.get("use_ui_avatars", False):
@@ -314,15 +320,28 @@ async def forward_tg_to_tg(event, path, sender_name, is_bot):
 # ==================== 主程式啟動 ====================
 
 async def main():
+    global SESSION, FORWARD_SEMAPHORE
     load_all_configs()
     
     if not all([DISCORD_TOKEN, TELEGRAM_TOKEN, TG_API_ID, TG_API_HASH]):
         print("[X] 錯誤：.env 缺少必要的 Token 或 API 資訊。")
         return
 
+    # 初始化全域資源
+    SESSION = aiohttp.ClientSession()
+    FORWARD_SEMAPHORE = asyncio.Semaphore(5)
+
     intents = discord.Intents.default()
     intents.message_content = True
     dc_bot = DiscordClient(intents=intents)
+
+    # 註冊 Telegram 事件處理器並加入過濾器
+    if TG2DC_CONFIG and "paths" in TG2DC_CONFIG:
+        source_ids = list(set(path['source_id'] for path in TG2DC_CONFIG["paths"]))
+        tg_client.add_event_handler(tg_handler, events.NewMessage(chats=source_ids))
+        print(f"[V] Telegram 監聽頻道數: {len(source_ids)} 個")
+    else:
+        tg_client.add_event_handler(tg_handler, events.NewMessage)
 
     print("正在啟動雙向轉發系統...")
 
@@ -334,6 +353,10 @@ async def main():
         await tg_client.run_until_disconnected()
     except Exception as e:
         print(f"[X] 系統執行出錯: {e}")
+    finally:
+        if SESSION:
+            await SESSION.close()
+            print("[V] 已關閉全域 Session")
 
 if __name__ == "__main__":
     try:

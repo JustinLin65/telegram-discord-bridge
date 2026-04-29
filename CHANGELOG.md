@@ -3,6 +3,22 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [4.1.0] - 2026-04-28
+
+### Added
+
+- **全域 Session 池 (Global Session Pool)**：導入全域 `aiohttp.ClientSession` 管理連線，透過連線複用技術提升轉發效率並降低系統資源開銷。
+- **併發控制系統 (Concurrency Control)**：引入 `asyncio.Semaphore` 機制，限制同時處理的轉發任務數量，確保在高頻發訊情境下的系統穩定性，防止被 API 速率限制。
+
+### Changed
+
+- **Telegram 效能優化**：Telegram 事件監聽改用 `chats` 篩選模式，僅處理配置中指定的頻道訊息，大幅降低在大群組中的 CPU 佔用。
+- **資源管理強化**：優化程式關閉邏輯，確保在停止服務時能正確關閉所有網路 Session 與資源。
+
+### Fixed
+
+- **檔案大小判定穩定性**：優化 Telegram 媒體檔案大小偵測，防止特殊情況下抓取不到 size 導致的邏輯異常。
+
 ## [4.0.1] - 2026-04
 
 ### Changed
