@@ -1,4 +1,5 @@
-# Telegram Discord Bridge v4.1.0
+# Telegram Discord Bridge v4.2.0
+import aiosqlite
 import discord
 import aiohttp
 import asyncio
@@ -18,6 +19,58 @@ load_dotenv()
 # ==================== 配置與路徑 ====================
 DC2TG_CONFIG_FILE = 'dc2tg_config.json'
 TG2DC_CONFIG_FILE = 'tg2dctg_config.json'
+DB_PATH = 'message_map.db'
+
+# ==================== 資料庫邏輯 ====================
+
+async def init_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('PRAGMA journal_mode=WAL;')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS message_map (
+                dc_msg_id INTEGER,
+                dc_channel_id INTEGER,
+                tg_msg_id INTEGER,
+                tg_chat_id INTEGER,
+                tg_top_id INTEGER,
+                PRIMARY KEY (dc_msg_id, tg_msg_id)
+            )
+        ''')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_dc_msg ON message_map (dc_msg_id)')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_tg_msg ON message_map (tg_msg_id, tg_chat_id)')
+        await db.commit()
+
+async def save_mapping(dc_msg_id, dc_channel_id, tg_msg_id, tg_chat_id, tg_top_id=0):
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute('''
+                INSERT OR REPLACE INTO message_map 
+                (dc_msg_id, dc_channel_id, tg_msg_id, tg_chat_id, tg_top_id) 
+                VALUES (?, ?, ?, ?, ?)
+            ''', (dc_msg_id, dc_channel_id, tg_msg_id, tg_chat_id, tg_top_id))
+            await db.commit()
+    except Exception as e:
+        print(f"[!] 儲存 Mapping 失敗: {e}")
+
+async def get_mappings_by_dc(dc_msg_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute('SELECT tg_msg_id, tg_chat_id FROM message_map WHERE dc_msg_id = ?', (dc_msg_id,)) as cursor:
+            return await cursor.fetchall()
+
+async def get_mapping_by_tg(tg_msg_id, tg_chat_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute('SELECT dc_msg_id, dc_channel_id FROM message_map WHERE tg_msg_id = ? AND tg_chat_id = ?', (tg_msg_id, tg_chat_id)) as cursor:
+            return await cursor.fetchone()
+
+async def delete_mapping_by_dc(dc_msg_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('DELETE FROM message_map WHERE dc_msg_id = ?', (dc_msg_id,))
+        await db.commit()
+
+async def delete_mapping_by_tg(tg_msg_id, tg_chat_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('DELETE FROM message_map WHERE tg_msg_id = ? AND tg_chat_id = ?', (tg_msg_id, tg_chat_id))
+        await db.commit()
 
 # 從 .env 讀取 Token
 DISCORD_TOKEN = os.getenv('DC_BOT_TOKEN')
@@ -33,6 +86,7 @@ DC2TG_RULES = []
 TG2DC_CONFIG = None
 SESSION = None  # 全域 aiohttp Session
 FORWARD_SEMAPHORE = None # 在 main 中初始化並限制併發
+DC_BOT_INSTANCE = None # 全域 Discord Bot 實例
 
 # ==================== 設定檔載入邏輯 ====================
 
@@ -127,11 +181,33 @@ class DiscordClient(discord.Client):
         async with FORWARD_SEMAPHORE:
             await self.process_forward(message, rule)
 
+    async def on_raw_message_delete(self, payload):
+        mappings = await get_mappings_by_dc(payload.message_id)
+        if mappings:
+            print(f"[🗑️] 偵測到 Discord 訊息刪除: 頻道ID={payload.channel_id}, 訊息ID={payload.message_id}")
+            for tg_msg_id, tg_chat_id in mappings:
+                print(f"   -> 同步刪除 Telegram 訊息: 群組ID={tg_chat_id}, 訊息ID={tg_msg_id}")
+                await self.delete_tg_message(tg_chat_id, tg_msg_id)
+            await delete_mapping_by_dc(payload.message_id)
+
+    async def delete_tg_message(self, chat_id, message_id):
+        base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+        payload = {'chat_id': chat_id, 'message_id': message_id}
+        try:
+            async with SESSION.post(f"{base_url}/deleteMessage", json=payload) as resp:
+                return await resp.json()
+        except Exception as e:
+            print(f"[!] 刪除 Telegram 訊息失敗: {e}")
+
     async def process_forward(self, message, rule):
         header = f"*{message.author.display_name}*"
         tg_chat_id = rule["telegram_chat_id"]
         tg_topic_id = rule["telegram_topic_id"]
         content = message.content or ""
+
+        async def handle_res(res):
+            if res and res.get("ok"):
+                await save_mapping(message.id, message.channel.id, res["result"]["message_id"], tg_chat_id, tg_topic_id)
 
         # 處理貼圖
         if message.stickers:
@@ -139,7 +215,8 @@ class DiscordClient(discord.Client):
                 file_io = await self.download_file(sticker.url)
                 if file_io:
                     stype = "animation" if sticker.format in [discord.StickerFormatType.apng, discord.StickerFormatType.gif] else "photo"
-                    await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n(貼圖: {sticker.name})", file_io, f"{sticker.name}.png", stype)
+                    res = await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n(貼圖: {sticker.name})", file_io, f"{sticker.name}.png", stype)
+                    await handle_res(res)
             return
 
         # 處理自定義表情
@@ -149,7 +226,8 @@ class DiscordClient(discord.Client):
                 ext = "gif" if is_animated else "png"
                 file_io = await self.download_file(f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}?size=512")
                 if file_io:
-                    await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n(表情: {name})", file_io, f"{name}.{ext}", "animation" if is_animated else "photo")
+                    res = await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n(表情: {name})", file_io, f"{name}.{ext}", "animation" if is_animated else "photo")
+                    await handle_res(res)
             return
 
         # 處理附件
@@ -158,7 +236,8 @@ class DiscordClient(discord.Client):
                 file_io = io.BytesIO(await attachment.read())
                 caption = f"{header}\n{content}".strip() if i == 0 else f"{header} (續)"
                 stype = "photo" if attachment.content_type and attachment.content_type.startswith("image/") else "document"
-                await self.send_to_telegram(tg_chat_id, tg_topic_id, caption, file_io, attachment.filename, stype)
+                res = await self.send_to_telegram(tg_chat_id, tg_topic_id, caption, file_io, attachment.filename, stype)
+                await handle_res(res)
             return
 
         # 處理 GIF
@@ -168,11 +247,13 @@ class DiscordClient(discord.Client):
                 file_io = await self.download_file(media_url)
                 if file_io:
                     clean_content = content.replace(embed_url, "").strip() if embed_url else content
-                    await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n{clean_content}".strip(), file_io, "animation.mp4", "animation")
+                    res = await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n{clean_content}".strip(), file_io, "animation.mp4", "animation")
+                    await handle_res(res)
                     return
 
         if content:
-            await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n{content}".strip())
+            res = await self.send_to_telegram(tg_chat_id, tg_topic_id, f"{header}\n{content}".strip())
+            await handle_res(res)
 
     async def wait_for_embed(self, message):
         for _ in range(5):
@@ -198,11 +279,19 @@ async def send_to_discord_webhook(webhook_url, username, text=None, file_path=No
     if avatar_url: data.add_field('avatar_url', avatar_url)
     if file_path:
         data.add_field('file', open(file_path, 'rb'), filename=os.path.basename(file_path))
+    
+    # 加入 wait=true 以取得 Discord 訊息 ID
+    url = webhook_url + ("&" if "?" in webhook_url else "?") + "wait=true"
+    
     try:
-        async with SESSION.post(webhook_url, data=data) as resp:
-            return await resp.text()
+        async with SESSION.post(url, data=data) as resp:
+            if resp.status in [200, 204]:
+                return await resp.json()
+            else:
+                print(f"   [X] Discord Webhook 錯誤 ({resp.status}): {await resp.text()}")
     except Exception as e:
         print(f"   [X] Discord Webhook 發送失敗: {e}")
+    return None
 
 async def get_reply_tag(event):
     if not event.message.reply_to: return None
@@ -301,7 +390,13 @@ async def forward_tg_to_dc(event, path, sender_name, is_bot):
         else:
             full_text += "\n\n⚠️ [媒體過大，未轉發]"
 
-    await send_to_discord_webhook(path['target_id'], display_name, full_text, file_path, avatar_url)
+    res = await send_to_discord_webhook(path['target_id'], display_name, full_text, file_path, avatar_url)
+    if res and "id" in res:
+        # 取得 Topic ID (如果有)
+        reply_obj = event.message.reply_to
+        tg_top_id = getattr(reply_obj, 'reply_to_top_id', 0) or 0
+        await save_mapping(int(res["id"]), int(res["channel_id"]), event.message.id, event.chat_id, tg_top_id)
+
     if file_path and os.path.exists(file_path): os.remove(file_path)
 
 async def forward_tg_to_tg(event, path, sender_name, is_bot):
@@ -317,10 +412,35 @@ async def forward_tg_to_tg(event, path, sender_name, is_bot):
         await tg_client.send_message(path['target_id'], f"**{sender_name}**:\n{msg_text}", 
                                      file=event.message.media, reply_to=path['target_topic'] or None)
 
+async def tg_delete_handler(event):
+    if not event.deleted_ids:
+        return
+    for msg_id in event.deleted_ids:
+        mapping = await get_mapping_by_tg(msg_id, event.chat_id)
+        if mapping:
+            dc_msg_id, dc_channel_id = mapping
+            print(f"[🗑️] 偵測到 Telegram 訊息刪除: 群組ID={event.chat_id}, 訊息ID={msg_id}")
+            print(f"   -> 同步刪除 Discord 訊息: 頻道ID={dc_channel_id}, 訊息ID={dc_msg_id}")
+            await delete_discord_message(dc_channel_id, dc_msg_id)
+            await delete_mapping_by_tg(msg_id, event.chat_id)
+
+async def delete_discord_message(channel_id, message_id):
+    if DC_BOT_INSTANCE:
+        try:
+            channel = DC_BOT_INSTANCE.get_channel(channel_id) or await DC_BOT_INSTANCE.fetch_channel(channel_id)
+            if channel:
+                msg = await channel.fetch_message(message_id)
+                await msg.delete()
+        except Exception as e:
+            # 忽略找不到訊息的錯誤 (可能已經被手動刪除)
+            if "Unknown Message" not in str(e):
+                print(f"[!] 刪除 Discord 訊息失敗: {e}")
+
 # ==================== 主程式啟動 ====================
 
 async def main():
     global SESSION, FORWARD_SEMAPHORE
+    await init_db()
     load_all_configs()
     
     if not all([DISCORD_TOKEN, TELEGRAM_TOKEN, TG_API_ID, TG_API_HASH]):
@@ -328,26 +448,30 @@ async def main():
         return
 
     # 初始化全域資源
-    SESSION = aiohttp.ClientSession()
+    timeout = aiohttp.ClientTimeout(total=30)
+    SESSION = aiohttp.ClientSession(timeout=timeout)
     FORWARD_SEMAPHORE = asyncio.Semaphore(5)
 
     intents = discord.Intents.default()
     intents.message_content = True
-    dc_bot = DiscordClient(intents=intents)
+    global DC_BOT_INSTANCE
+    DC_BOT_INSTANCE = DiscordClient(intents=intents)
 
     # 註冊 Telegram 事件處理器並加入過濾器
     if TG2DC_CONFIG and "paths" in TG2DC_CONFIG:
         source_ids = list(set(path['source_id'] for path in TG2DC_CONFIG["paths"]))
         tg_client.add_event_handler(tg_handler, events.NewMessage(chats=source_ids))
+        tg_client.add_event_handler(tg_delete_handler, events.MessageDeleted(chats=source_ids))
         print(f"[V] Telegram 監聽頻道數: {len(source_ids)} 個")
     else:
         tg_client.add_event_handler(tg_handler, events.NewMessage)
+        tg_client.add_event_handler(tg_delete_handler, events.MessageDeleted)
 
     print("正在啟動雙向轉發系統...")
 
     try:
         await asyncio.gather(
-            dc_bot.start(DISCORD_TOKEN),
+            DC_BOT_INSTANCE.start(DISCORD_TOKEN),
             tg_client.start(bot_token=TELEGRAM_TOKEN)
         )
         await tg_client.run_until_disconnected()

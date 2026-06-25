@@ -5,3 +5,4 @@ aiohttp>=3.10.11
 urllib3>=2.2.2
 zipp>=3.19.1
 pyasn1>=0.6.3
+aiosqlite

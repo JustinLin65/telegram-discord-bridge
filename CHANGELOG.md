@@ -3,6 +3,18 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [4.2.0] - 2026-05
+
+### Added
+
+- **雙向訊息刪除同步 (Bi-directional Message Deletion)**：當 Discord 或 Telegram 端的訊息被刪除時，另一端對應的轉發訊息會同步被刪除。
+- **訊息映射資料庫 (SQLite Integration)**：引入 `aiosqlite` 並在啟動時自動初始化本地 SQLite 資料庫 `message_map.db`，記錄雙向轉發訊息的 ID 映射關係，作為刪除同步的基礎。
+
+### Changed
+
+- **Webhook 傳送參數優化**：Discord Webhook 的傳送請求自動附加 `wait=true`，用以取得發送成功後的訊息 ID。
+- **連線逾時設定 (Connection Timeout)**：將全域 `aiohttp.ClientSession` 的超時時間設定為 30 秒，提升異常網路環境下的容錯能力。
+
 ## [4.1.0] - 2026-04-28
 
 ### Added
