@@ -1,4 +1,4 @@
-# Telegram Discord Bridge v4.2.0
+# Telegram Discord Bridge v4.3.0
 import aiosqlite
 import discord
 import aiohttp
@@ -85,7 +85,8 @@ if TG_API_ID:
 DC2TG_RULES = []
 TG2DC_CONFIG = None
 SESSION = None  # 全域 aiohttp Session
-FORWARD_SEMAPHORE = None # 在 main 中初始化並限制併發
+DC_TO_TG_SEMAPHORE = None # 在 main 中初始化
+TG_TO_DC_SEMAPHORE = None # 在 main 中初始化
 DC_BOT_INSTANCE = None # 全域 Discord Bot 實例
 
 # ==================== 設定檔載入邏輯 ====================
@@ -140,33 +141,50 @@ class DiscordClient(discord.Client):
 
     async def send_to_telegram(self, chat_id, thread_id, text, file_data=None, filename=None, send_type="document"):
         base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-        try:
-            if file_data:
-                method = "sendPhoto" if send_type == "photo" else ("sendAnimation" if send_type == "animation" else "sendDocument")
-                file_field = "photo" if send_type == "photo" else ("animation" if send_type == "animation" else "document")
+        for attempt in range(3):
+            try:
+                if file_data:
+                    method = "sendPhoto" if send_type == "photo" else ("sendAnimation" if send_type == "animation" else "sendDocument")
+                    file_field = "photo" if send_type == "photo" else ("animation" if send_type == "animation" else "document")
+                    
+                    data = aiohttp.FormData(quote_fields=False)
+                    data.add_field('chat_id', str(chat_id))
+                    data.add_field('caption', text)
+                    data.add_field('parse_mode', 'Markdown')
+                    if thread_id:
+                        data.add_field('message_thread_id', str(thread_id))
+                    
+                    # 每次重試前確保游標在最前面
+                    file_data.seek(0)
+                    data.add_field(file_field, file_data, filename=filename or "file")
+                    
+                    async with SESSION.post(f"{base_url}/{method}", data=data) as resp:
+                        res_json = await resp.json()
+                else:
+                    payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown', 'disable_web_page_preview': True}
+                    if thread_id: payload['message_thread_id'] = thread_id
+                    async with SESSION.post(f"{base_url}/sendMessage", json=payload) as resp:
+                        res_json = await resp.json()
                 
-                data = aiohttp.FormData(quote_fields=False)
-                data.add_field('chat_id', str(chat_id))
-                data.add_field('caption', text)
-                data.add_field('parse_mode', 'Markdown')
-                if thread_id:
-                    data.add_field('message_thread_id', str(thread_id))
-                
-                file_data.seek(0)
-                data.add_field(file_field, file_data, filename=filename or "file")
-                
-                async with SESSION.post(f"{base_url}/{method}", data=data) as resp:
-                    res_json = await resp.json()
-                    if not res_json.get("ok") and "IMAGE_PROCESS_FAILED" in res_json.get("description", ""):
+                if resp.status == 200:
+                    if not res_json.get("ok") and "IMAGE_PROCESS_FAILED" in res_json.get("description", "") and attempt == 0:
+                        # 圖片處理失敗時嘗試以文件發送
                         return await self.send_to_telegram(chat_id, thread_id, text, file_data, filename, send_type="document")
                     return res_json
-            else:
-                payload = {'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown', 'disable_web_page_preview': True}
-                if thread_id: payload['message_thread_id'] = thread_id
-                async with SESSION.post(f"{base_url}/sendMessage", json=payload) as resp:
-                    return await resp.json()
-        except Exception as e:
-            print(f"   [!] 發送至 Telegram 錯誤: {e}")
+                elif resp.status == 429:
+                    retry_after = res_json.get("parameters", {}).get("retry_after", 1)
+                    print(f"   [!] Telegram 429，等待 {retry_after} 秒後重試...")
+                    await asyncio.sleep(retry_after)
+                elif resp.status >= 500:
+                    print(f"   [!] Telegram 伺服器錯誤 ({resp.status})，重試中 ({attempt+1}/3)...")
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    print(f"   [X] Telegram 請求失敗: {res_json}")
+                    break
+            except Exception as e:
+                print(f"   [!] 發送至 Telegram 錯誤 (重試 {attempt+1}/3): {e}")
+                await asyncio.sleep(2 ** attempt)
+        return None
 
     async def on_message(self, message):
         if message.author.bot:
@@ -178,7 +196,7 @@ class DiscordClient(discord.Client):
                 asyncio.create_task(self.wrapped_process_forward(message, rule))
 
     async def wrapped_process_forward(self, message, rule):
-        async with FORWARD_SEMAPHORE:
+        async with DC_TO_TG_SEMAPHORE:
             await self.process_forward(message, rule)
 
     async def on_raw_message_delete(self, payload):
@@ -193,11 +211,23 @@ class DiscordClient(discord.Client):
     async def delete_tg_message(self, chat_id, message_id):
         base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
         payload = {'chat_id': chat_id, 'message_id': message_id}
-        try:
-            async with SESSION.post(f"{base_url}/deleteMessage", json=payload) as resp:
-                return await resp.json()
-        except Exception as e:
-            print(f"[!] 刪除 Telegram 訊息失敗: {e}")
+        for attempt in range(3):
+            try:
+                async with SESSION.post(f"{base_url}/deleteMessage", json=payload) as resp:
+                    res_json = await resp.json()
+                    if resp.status == 200:
+                        return res_json
+                    elif resp.status == 429:
+                        retry_after = res_json.get("parameters", {}).get("retry_after", 1)
+                        await asyncio.sleep(retry_after)
+                    elif resp.status >= 500:
+                        await asyncio.sleep(2 ** attempt)
+                    else:
+                        break
+            except Exception as e:
+                print(f"[!] 刪除 Telegram 訊息失敗 (重試 {attempt+1}/3): {e}")
+                await asyncio.sleep(2 ** attempt)
+        return None
 
     async def process_forward(self, message, rule):
         header = f"*{message.author.display_name}*"
@@ -273,24 +303,36 @@ class DiscordClient(discord.Client):
 tg_client = TelegramClient('integrated_bot_session', TG_API_ID, TG_API_HASH)
 
 async def send_to_discord_webhook(webhook_url, username, text=None, file_path=None, avatar_url=None):
-    data = aiohttp.FormData()
-    data.add_field('username', username)
-    if text: data.add_field('content', text)
-    if avatar_url: data.add_field('avatar_url', avatar_url)
-    if file_path:
-        data.add_field('file', open(file_path, 'rb'), filename=os.path.basename(file_path))
-    
     # 加入 wait=true 以取得 Discord 訊息 ID
     url = webhook_url + ("&" if "?" in webhook_url else "?") + "wait=true"
     
-    try:
-        async with SESSION.post(url, data=data) as resp:
-            if resp.status in [200, 204]:
-                return await resp.json()
-            else:
-                print(f"   [X] Discord Webhook 錯誤 ({resp.status}): {await resp.text()}")
-    except Exception as e:
-        print(f"   [X] Discord Webhook 發送失敗: {e}")
+    for attempt in range(3):
+        data = aiohttp.FormData()
+        data.add_field('username', username)
+        if text: data.add_field('content', text)
+        if avatar_url: data.add_field('avatar_url', avatar_url)
+        if file_path:
+            # 每次重試重新打開檔案以確保讀取位置正確
+            data.add_field('file', open(file_path, 'rb'), filename=os.path.basename(file_path))
+        
+        try:
+            async with SESSION.post(url, data=data) as resp:
+                if resp.status in [200, 204]:
+                    return await resp.json()
+                elif resp.status == 429:
+                    res_json = await resp.json()
+                    retry_after = res_json.get("retry_after", 1)
+                    print(f"   [!] Discord Webhook 429，等待 {retry_after} 秒後重試...")
+                    await asyncio.sleep(retry_after)
+                elif resp.status >= 500:
+                    print(f"   [!] Discord 伺服器錯誤 ({resp.status})，重試中 ({attempt+1}/3)...")
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    print(f"   [X] Discord Webhook 錯誤 ({resp.status}): {await resp.text()}")
+                    break
+        except Exception as e:
+            print(f"   [X] Discord Webhook 發送失敗 (重試 {attempt+1}/3): {e}")
+            await asyncio.sleep(2 ** attempt)
     return None
 
 async def get_reply_tag(event):
@@ -307,7 +349,7 @@ async def tg_handler(event):
     if not TG2DC_CONFIG: return
     
     # 使用 Semaphore 限制併發處理
-    async with FORWARD_SEMAPHORE:
+    async with TG_TO_DC_SEMAPHORE:
         chat_id = event.chat_id
         
         # 改進的 Topic ID 偵測邏輯
@@ -439,7 +481,7 @@ async def delete_discord_message(channel_id, message_id):
 # ==================== 主程式啟動 ====================
 
 async def main():
-    global SESSION, FORWARD_SEMAPHORE
+    global SESSION, DC_TO_TG_SEMAPHORE, TG_TO_DC_SEMAPHORE
     await init_db()
     load_all_configs()
     
@@ -450,7 +492,8 @@ async def main():
     # 初始化全域資源
     timeout = aiohttp.ClientTimeout(total=30)
     SESSION = aiohttp.ClientSession(timeout=timeout)
-    FORWARD_SEMAPHORE = asyncio.Semaphore(5)
+    DC_TO_TG_SEMAPHORE = asyncio.Semaphore(5)
+    TG_TO_DC_SEMAPHORE = asyncio.Semaphore(5)
 
     intents = discord.Intents.default()
     intents.message_content = True

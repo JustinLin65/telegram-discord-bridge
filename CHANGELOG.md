@@ -3,6 +3,17 @@
 本專案的所有顯著變更將記錄在此檔案中。
 格式參考自 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [4.3.0] - 2026-06-27
+
+### Added
+
+- **API 請求重試與容錯機制 (API Request Retry Mechanism)**：針對 Telegram (傳送與刪除訊息) 及 Discord Webhook 請求引入最多 3 次自動重試邏輯。支援處理 HTTP 429 速率限制（自動依 API 回傳的 `retry_after` 延遲後重試）及 5xx 伺服器錯誤（使用指數退避 `2 ** attempt` 秒重試），大幅增強橋接的抗震與容錯能力。
+- **重試檔案指標重設機制**：在發送 Discord Webhook 及 Telegram 媒體附件時，若發生重試，會自動重設 `io.BytesIO` 游標位置 (`seek(0)`) 或重新開啟實體檔案，確保重試發送的檔案內容完整。
+
+### Changed
+
+- **雙向獨立併發控制 (Separated Concurrency Control)**：重構原全域單一 `FORWARD_SEMAPHORE` 為兩個獨立的 `DC_TO_TG_SEMAPHORE` 與 `TG_TO_DC_SEMAPHORE`（各限制為 5）。Discord 往 Telegram 與 Telegram 往 Discord 的訊息轉發併發數各自獨立限制，避免單向大量流量耗盡限制而導致另一向轉發阻塞。
+
 ## [4.2.0] - 2026-05
 
 ### Added
